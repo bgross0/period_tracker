@@ -8,6 +8,6 @@ binding = "DB"
 database_name = "period-tracker-db"
 database_id = "a571cc0a-9dd1-4a36-b733-9f4609076dcf"
 
-# CORS settings
-[vars]
-ALLOWED_ORIGINS = "*"
+# Environment variables
+# Note: Add GROQ_API_KEY as a secret via: wrangler secret put GROQ_API_KEY
+# Or via Cloudflare dashboard: Workers & Pages > period-tracker-api > Settings > Variables
