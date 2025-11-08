@@ -1,0 +1,13 @@
+name = "period-tracker-api"
+main = "worker/index.js"
+compatibility_date = "2025-01-01"
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "period-tracker-db"
+database_id = "a571cc0a-9dd1-4a36-b733-9f4609076dcf"
+
+# CORS settings
+[vars]
+ALLOWED_ORIGINS = "*"
