@@ -73,7 +73,7 @@ const getPhaseEmoji = (phase) => {
 };
 
 // ==================== Header Component ====================
-const Header = ({ activeTab, setActiveTab, user }) => {
+const Header = ({ activeTab, setActiveTab, user, onLogout, onShowSettings, onShowNotifications }) => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   return (
@@ -114,14 +114,26 @@ const Header = ({ activeTab, setActiveTab, user }) => {
 
           {/* User Actions */}
           <div className="flex items-center space-x-3">
-            <button className="p-2 hover:bg-pink-500 rounded-lg transition-colors relative">
+            <button
+              onClick={onShowNotifications}
+              className="p-2 hover:bg-pink-500 rounded-lg transition-colors relative"
+            >
               <Bell className="w-5 h-5" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full"></span>
             </button>
-            <button className="p-2 hover:bg-pink-500 rounded-lg transition-colors">
+            <button
+              onClick={onShowSettings}
+              className="p-2 hover:bg-pink-500 rounded-lg transition-colors"
+            >
               <Settings className="w-5 h-5" />
             </button>
-            <button 
+            <button
+              onClick={onLogout}
+              className="hidden md:block px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors text-sm font-medium"
+            >
+              Logout
+            </button>
+            <button
               className="md:hidden p-2 hover:bg-pink-500 rounded-lg"
               onClick={() => setShowMobileMenu(!showMobileMenu)}
             >
@@ -431,6 +443,116 @@ const DailyLogModal = ({ isOpen, onClose, onSave, userId, initialData = null }) 
   );
 };
 
+// ==================== Remedy Suggestions Component ====================
+const RemedySuggestions = () => {
+  const [remedies, setRemedies] = useState(null);
+  const [selectedSymptom, setSelectedSymptom] = useState('cramps');
+  const [loading, setLoading] = useState(false);
+
+  const symptoms = ['cramps', 'headache', 'bloating', 'nausea', 'fatigue', 'mood_swings'];
+
+  useEffect(() => {
+    loadRemedies();
+  }, [selectedSymptom]);
+
+  const loadRemedies = async () => {
+    setLoading(true);
+    try {
+      const response = await authFetch(`/remedies/suggestions?symptom=${selectedSymptom}`);
+      if (response.ok) {
+        const data = await response.json();
+        setRemedies(data);
+      }
+    } catch (error) {
+      console.error('Failed to load remedies:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+      <h3 className="text-xl font-semibold text-gray-900 mb-4">💊 Remedy Suggestions</h3>
+
+      {/* Symptom Selector */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          What symptom are you experiencing?
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {symptoms.map(symptom => (
+            <button
+              key={symptom}
+              onClick={() => setSelectedSymptom(symptom)}
+              className={`px-4 py-2 rounded-lg font-medium transition-all capitalize ${
+                selectedSymptom === symptom
+                  ? 'bg-pink-500 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {symptom.replace('_', ' ')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-8">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
+        </div>
+      ) : remedies ? (
+        <div className="space-y-4">
+          {/* What Worked For You Before */}
+          {remedies.what_worked_for_you && remedies.what_worked_for_you.length > 0 && (
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-3">
+                ✨ What Worked For You Before
+              </h4>
+              <div className="space-y-2">
+                {remedies.what_worked_for_you.map((remedy, idx) => (
+                  <div key={idx} className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold text-gray-900">{remedy.name}</p>
+                        <p className="text-sm text-gray-600">{remedy.description}</p>
+                        <p className="text-xs text-green-700 mt-1">{remedy.message}</p>
+                      </div>
+                      <span className="text-2xl font-bold text-green-600">
+                        {remedy.avg_effectiveness.toFixed(1)}/5
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* General Suggestions */}
+          {remedies.suggestions && remedies.suggestions.length > 0 && (
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-3">
+                💡 General Suggestions
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {remedies.suggestions.map((remedy, idx) => (
+                  <div key={idx} className="p-4 bg-gray-50 border border-gray-200 rounded-lg hover:border-pink-300 transition-colors">
+                    <p className="font-semibold text-gray-900">{remedy.name}</p>
+                    <p className="text-sm text-gray-600">{remedy.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="text-gray-500 text-center py-8">
+          Track symptoms in your daily logs to get personalized remedy suggestions!
+        </p>
+      )}
+    </div>
+  );
+};
+
 // ==================== Dashboard Page ====================
 const Dashboard = ({ userId, logs, cycles, onLogCreated }) => {
   const [showLogModal, setShowLogModal] = useState(false);
@@ -650,13 +772,16 @@ const Dashboard = ({ userId, logs, cycles, onLogCreated }) => {
         )}
       </div>
 
-      {/* Warnings */}
+      {/* Remedy Suggestions - NEW V2 FEATURE */}
+      <RemedySuggestions />
+
+      {/* Pattern Insights (NOT medical warnings!) */}
       {warnings.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-lg p-6 border border-orange-200">
+        <div className="bg-white rounded-2xl shadow-lg p-6 border border-blue-200">
           <div className="flex items-center space-x-2 mb-4">
-            <AlertCircle className="w-6 h-6 text-orange-500" />
+            <Sparkles className="w-6 h-6 text-blue-500" />
             <h3 className="text-lg font-semibold text-gray-900">
-              Early Warnings ({warnings.length})
+              Pattern Insights ({warnings.length})
             </h3>
           </div>
           
@@ -1187,6 +1312,140 @@ const Chat = ({ userId }) => {
   );
 };
 
+// ==================== Onboarding Component ====================
+const Onboarding = ({ onComplete }) => {
+  const [onboardingData, setOnboardingData] = useState({
+    last_period_start: '',
+    average_cycle_length: 28,
+    average_period_length: 5,
+    regularity: 'regular',
+    track_mood: true,
+    track_energy: true,
+    track_sleep: true,
+    track_symptoms: true,
+    track_flow: true,
+    track_remedies: true,
+    track_food: false,
+    track_exercise: false
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    if (!onboardingData.last_period_start) {
+      setError('Please enter your last period start date');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await authFetch('/onboarding', {
+        method: 'POST',
+        body: JSON.stringify(onboardingData)
+      });
+
+      if (response.ok) {
+        onComplete();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Onboarding failed');
+      }
+    } catch (err) {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-purple-50 flex items-center justify-center px-4">
+      <div className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl p-8">
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome! 🎉</h2>
+          <p className="text-gray-600">Let's personalize your tracking experience</p>
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              When did your last period start? *
+            </label>
+            <input
+              type="date"
+              value={onboardingData.last_period_start}
+              onChange={(e) => setOnboardingData({ ...onboardingData, last_period_start: e.target.value })}
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Average cycle length (days)
+            </label>
+            <input
+              type="number"
+              min="21"
+              max="45"
+              value={onboardingData.average_cycle_length}
+              onChange={(e) => setOnboardingData({ ...onboardingData, average_cycle_length: parseInt(e.target.value) })}
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-4">
+              What would you like to track?
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { key: 'track_mood', label: '😊 Mood' },
+                { key: 'track_energy', label: '⚡ Energy' },
+                { key: 'track_flow', label: '🩸 Flow' },
+                { key: 'track_symptoms', label: '🤕 Symptoms' },
+                { key: 'track_sleep', label: '😴 Sleep' },
+                { key: 'track_remedies', label: '💊 Remedies' }
+              ].map(({ key, label }) => (
+                <label
+                  key={key}
+                  className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                    onboardingData[key]
+                      ? 'border-pink-500 bg-pink-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={onboardingData[key]}
+                    onChange={(e) => setOnboardingData({ ...onboardingData, [key]: e.target.checked })}
+                    className="mr-3 w-5 h-5 text-pink-600"
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-red-800 text-sm">{error}</p>
+            </div>
+          )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="w-full py-4 bg-gradient-to-r from-pink-600 to-pink-700 text-white rounded-lg font-semibold text-lg hover:shadow-lg transition-all disabled:bg-gray-300"
+          >
+            {loading ? 'Setting up...' : "Let's Go! 🚀"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ==================== Main App Component ====================
 const App = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1270,6 +1529,15 @@ const App = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
   const [authError, setAuthError] = useState('');
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const handleLogout = () => {
+    clearAuthToken();
+    setUserId(null);
+    setUser(null);
+  };
 
   const handleAuth = async (email, password, name = null) => {
     setAuthError('');
@@ -1290,13 +1558,24 @@ const App = () => {
       if (response.ok) {
         setAuthToken(data.token);
         setShowAuthModal(false);
-        await initializeApp();
+
+        // If registering, show onboarding
+        if (authMode === 'register') {
+          setNeedsOnboarding(true);
+        } else {
+          await initializeApp();
+        }
       } else {
         setAuthError(data.error || 'Authentication failed');
       }
     } catch (error) {
       setAuthError('Network error. Please try again.');
     }
+  };
+
+  const handleOnboardingComplete = async () => {
+    setNeedsOnboarding(false);
+    await initializeApp();
   };
 
   if (loading) {
@@ -1308,6 +1587,11 @@ const App = () => {
         </div>
       </div>
     );
+  }
+
+  // Show onboarding if needed
+  if (needsOnboarding) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
   }
 
   // Show login if no user
@@ -1393,7 +1677,65 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header activeTab={activeTab} setActiveTab={setActiveTab} user={user} />
+      <Header
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        user={user}
+        onLogout={handleLogout}
+        onShowSettings={() => setShowSettings(true)}
+        onShowNotifications={() => setShowNotifications(true)}
+      />
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-gray-900">Settings</h2>
+              <button onClick={() => setShowSettings(false)}>
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="font-semibold text-gray-900">Account</p>
+                <p className="text-sm text-gray-600">{user?.email}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="w-full py-3 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notifications Modal */}
+      {showNotifications && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowNotifications(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-gray-900">Notifications</h2>
+              <button onClick={() => setShowNotifications(false)}>
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="font-semibold text-gray-900">🎉 Welcome to FlowTracker V2!</p>
+                <p className="text-sm text-gray-600 mt-1">
+                  New features: Context-aware logging, streaks, remedy suggestions!
+                </p>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg text-center">
+                <p className="text-gray-500 text-sm">No new notifications</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main>
         {activeTab === 'dashboard' && (
