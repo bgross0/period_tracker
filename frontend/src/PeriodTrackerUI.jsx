@@ -1,0 +1,836 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  LineChart, Line, BarChart, Bar, 
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+} from 'recharts';
+import { 
+  Calendar, MessageCircle, TrendingUp, Activity, 
+  Heart, AlertCircle, Plus, X, Home, BarChart3, 
+  Sparkles, Settings, Bell, Menu
+} from 'lucide-react';
+
+// Mock API for demo
+const mockAPI = {
+  logs: [],
+  user: {
+    user_id: 'demo-user',
+    email: 'demo@flowtracker.com',
+    currentPhase: 'follicular',
+    cycleDay: 12
+  },
+  
+  createLog: function(log) {
+    const newLog = {
+      ...log,
+      log_id: Date.now().toString(),
+      created_at: new Date().toISOString()
+    };
+    this.logs.unshift(newLog);
+    return newLog;
+  },
+  
+  getLogs: function() {
+    return this.logs;
+  },
+  
+  getPredictions: function() {
+    const today = new Date();
+    const futureDate = new Date(today.setDate(today.getDate() + 16));
+    return {
+      predicted_start_date: futureDate.toISOString().split('T')[0],
+      predicted_cycle_length: 28,
+      confidence_score: 0.85
+    };
+  },
+  
+  getWarnings: function() {
+    return [{
+      type: 'period_warning',
+      severity: 'medium',
+      title: 'Period Expected Soon',
+      description: 'Your period is likely to start in the next 16 days.',
+      recommendations: [
+        'Keep supplies handy',
+        'Track any PMS symptoms',
+        'Stay hydrated'
+      ]
+    }];
+  }
+};
+
+const formatDate = (date) => {
+  return new Date(date).toLocaleDateString('en-US', { 
+    month: 'short', day: 'numeric', year: 'numeric' 
+  });
+};
+
+const getPhaseEmoji = (phase) => {
+  const emojis = {
+    menstrual: '🌙',
+    follicular: '🌱',
+    ovulation: '✨',
+    luteal: '🍂'
+  };
+  return emojis[phase] || '📅';
+};
+
+// Header Component
+const Header = ({ activeTab, setActiveTab }) => {
+  const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: Home },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'predictions', label: 'Predictions', icon: Sparkles },
+    { id: 'chat', label: 'AI Chat', icon: MessageCircle }
+  ];
+
+  return (
+    <header className="bg-gradient-to-r from-pink-600 to-pink-500 text-white shadow-lg">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center py-4">
+          <div className="flex items-center space-x-3">
+            <Heart className="w-8 h-8 fill-current" />
+            <div>
+              <h1 className="text-2xl font-bold">FlowTracker</h1>
+              <p className="text-xs text-pink-100">AI-Powered Health Insights</p>
+            </div>
+          </div>
+
+          <nav className="hidden md:flex items-center space-x-1">
+            {tabs.map(tab => {
+              const IconComponent = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-white text-pink-600 shadow-md'
+                      : 'text-pink-100 hover:bg-pink-500'
+                  }`}
+                >
+                  <IconComponent className="w-5 h-5" />
+                  <span className="font-medium">{tab.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="flex items-center space-x-3">
+            <button className="p-2 hover:bg-pink-500 rounded-lg transition-colors relative">
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full"></span>
+            </button>
+            <button className="p-2 hover:bg-pink-500 rounded-lg transition-colors">
+              <Settings className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+};
+
+// Daily Log Modal
+const DailyLogModal = ({ isOpen, onClose, onSave }) => {
+  const [logData, setLogData] = useState({
+    log_date: new Date().toISOString().split('T')[0],
+    flow_level: '',
+    mood: '',
+    mood_intensity: 5,
+    energy_level: 5,
+    sleep_hours: 7,
+    sleep_quality: 5,
+    symptoms: [],
+    notes: ''
+  });
+
+  const flowLevels = ['none', 'spotting', 'light', 'medium', 'heavy'];
+  const moods = ['happy', 'sad', 'anxious', 'irritable', 'calm', 'energetic'];
+  const symptoms = [
+    'cramps', 'headache', 'bloating', 'breast_tenderness',
+    'back_pain', 'fatigue', 'nausea', 'acne'
+  ];
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
+  const handleSubmit = () => {
+    onSave(logData);
+    onClose();
+  };
+
+  const toggleSymptom = (symptom) => {
+    setLogData(prev => ({
+      ...prev,
+      symptoms: prev.symptoms.includes(symptom)
+        ? prev.symptoms.filter(s => s !== symptom)
+        : [...prev.symptoms, symptom]
+    }));
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full my-8 flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+      >
+        {/* Header - Not sticky, just part of flow */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-2xl flex-shrink-0">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Daily Log</h2>
+            <p className="text-sm text-gray-500">{formatDate(logData.log_date)}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <X className="w-6 h-6 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="overflow-y-auto flex-1 px-6 py-6 space-y-6">
+          {/* Date */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Date</label>
+            <input
+              type="date"
+              value={logData.log_date}
+              onChange={(e) => setLogData({ ...logData, log_date: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Flow Level */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-3">Period Flow</label>
+            <div className="flex flex-wrap gap-2">
+              {flowLevels.map(level => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setLogData({ ...logData, flow_level: level })}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all capitalize ${
+                    logData.flow_level === level
+                      ? 'bg-pink-500 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Mood */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-3">Mood</label>
+            <div className="flex flex-wrap gap-2">
+              {moods.map(mood => (
+                <button
+                  key={mood}
+                  type="button"
+                  onClick={() => setLogData({ ...logData, mood })}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all capitalize ${
+                    logData.mood === mood
+                      ? 'bg-blue-500 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {mood}
+                </button>
+              ))}
+            </div>
+            
+            {logData.mood && (
+              <div className="mt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-gray-600">Intensity</span>
+                  <span className="text-lg font-bold text-blue-600">{logData.mood_intensity}/10</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={logData.mood_intensity}
+                  onChange={(e) => setLogData({ ...logData, mood_intensity: parseInt(e.target.value) })}
+                  className="w-full"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Energy */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-semibold text-gray-700">Energy Level</label>
+              <span className="text-lg font-bold text-green-600">{logData.energy_level}/10</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              value={logData.energy_level}
+              onChange={(e) => setLogData({ ...logData, energy_level: parseInt(e.target.value) })}
+              className="w-full"
+            />
+          </div>
+
+          {/* Sleep */}
+          <div className="space-y-4">
+            <label className="block text-sm font-semibold text-gray-700">Sleep</label>
+            
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Hours Slept</label>
+              <input
+                type="number"
+                step="0.5"
+                value={logData.sleep_hours}
+                onChange={(e) => setLogData({ ...logData, sleep_hours: parseFloat(e.target.value) })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs text-gray-600">Sleep Quality</label>
+                <span className="text-sm font-bold text-purple-600">{logData.sleep_quality}/10</span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={logData.sleep_quality}
+                onChange={(e) => setLogData({ ...logData, sleep_quality: parseInt(e.target.value) })}
+                className="w-full"
+              />
+            </div>
+          </div>
+
+          {/* Symptoms */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-3">Symptoms</label>
+            <div className="grid grid-cols-2 gap-2">
+              {symptoms.map(symptom => (
+                <label
+                  key={symptom}
+                  className={`flex items-center space-x-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                    logData.symptoms.includes(symptom)
+                      ? 'border-pink-500 bg-pink-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={logData.symptoms.includes(symptom)}
+                    onChange={() => toggleSymptom(symptom)}
+                    className="w-4 h-4 text-pink-600 rounded focus:ring-pink-500"
+                  />
+                  <span className="text-sm capitalize">{symptom.replace('_', ' ')}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Notes (Optional)</label>
+            <textarea
+              value={logData.notes}
+              onChange={(e) => setLogData({ ...logData, notes: e.target.value })}
+              placeholder="Any additional notes..."
+              rows={3}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:outline-none resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Footer - Not sticky */}
+        <div className="bg-gray-50 px-6 py-4 border-t border-gray-200 rounded-b-2xl flex justify-end space-x-3 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 text-gray-700 font-medium hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="px-6 py-3 bg-pink-500 text-white font-semibold rounded-lg hover:bg-pink-600 transition-colors shadow-md"
+          >
+            Save Entry
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Dashboard Component
+const Dashboard = ({ logs, onLogCreated }) => {
+  const [showLogModal, setShowLogModal] = useState(false);
+  const [nextPeriod, setNextPeriod] = useState(null);
+  const [warnings, setWarnings] = useState([]);
+
+  useEffect(() => {
+    setNextPeriod(mockAPI.getPredictions());
+    setWarnings(mockAPI.getWarnings());
+  }, []);
+
+  const chartData = logs.slice(0, 7).reverse().map(log => ({
+    date: new Date(log.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    energy: log.energy_level || 0,
+    mood: log.mood_intensity || 0,
+    sleep: log.sleep_quality || 0
+  }));
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      {/* Welcome */}
+      <div className="bg-gradient-to-r from-pink-50 to-purple-50 rounded-2xl p-6 border border-pink-100">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome Back! 👋</h2>
+        <p className="text-gray-600">
+          {getPhaseEmoji(mockAPI.user.currentPhase)} Day {mockAPI.user.cycleDay} of your cycle • {mockAPI.user.currentPhase} phase
+        </p>
+      </div>
+
+      {/* Primary Cards */}
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Next Period</h3>
+            <Calendar className="w-6 h-6 text-pink-500" />
+          </div>
+          
+          {nextPeriod && (
+            <>
+              <div className="mb-4">
+                <p className="text-3xl font-bold text-gray-900 mb-1">
+                  {formatDate(nextPeriod.predicted_start_date)}
+                </p>
+                <p className="text-sm text-gray-600">
+                  {Math.ceil((new Date(nextPeriod.predicted_start_date) - new Date()) / (1000 * 60 * 60 * 24))} days away
+                </p>
+              </div>
+              
+              <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                <span className="text-sm text-gray-600">Confidence</span>
+                <div className="flex items-center space-x-2">
+                  <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-pink-500 rounded-full"
+                      style={{ width: `${nextPeriod.confidence_score * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {Math.round(nextPeriod.confidence_score * 100)}%
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="bg-gradient-to-br from-pink-500 to-pink-600 rounded-2xl shadow-lg p-6 text-white">
+          <h3 className="text-lg font-semibold mb-2">Today's Check-In</h3>
+          
+          <button
+            onClick={() => setShowLogModal(true)}
+            className="w-full bg-white text-pink-600 rounded-xl py-4 px-6 font-bold text-lg hover:bg-pink-50 transition-colors shadow-md flex items-center justify-center space-x-2"
+          >
+            <Plus className="w-6 h-6" />
+            <span>Log Today</span>
+          </button>
+          
+          {logs.length > 0 && (
+            <p className="text-sm text-pink-100 mt-3">
+              Last logged: {formatDate(logs[0].log_date)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-gray-900">Your Trends</h3>
+          <TrendingUp className="w-6 h-6 text-green-500" />
+        </div>
+        
+        {chartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis dataKey="date" stroke="#6B7280" style={{ fontSize: '12px' }} />
+              <YAxis domain={[0, 10]} stroke="#6B7280" style={{ fontSize: '12px' }} />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="energy" stroke="#10B981" strokeWidth={3} name="Energy" />
+              <Line type="monotone" dataKey="mood" stroke="#3B82F6" strokeWidth={3} name="Mood" />
+              <Line type="monotone" dataKey="sleep" stroke="#8B5CF6" strokeWidth={3} name="Sleep" />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="text-center py-12">
+            <Activity className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">Log more days to see your trends</p>
+          </div>
+        )}
+      </div>
+
+      {/* Warnings */}
+      {warnings.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-lg p-6 border border-orange-200">
+          <div className="flex items-center space-x-2 mb-4">
+            <AlertCircle className="w-6 h-6 text-orange-500" />
+            <h3 className="text-lg font-semibold text-gray-900">
+              Early Warnings ({warnings.length})
+            </h3>
+          </div>
+          
+          <div className="space-y-3">
+            {warnings.map((warning, idx) => (
+              <div key={idx} className="p-4 rounded-lg border-l-4 bg-orange-50 border-orange-500">
+                <h4 className="font-semibold text-gray-900 mb-1">{warning.title}</h4>
+                <p className="text-sm text-gray-600 mb-2">{warning.description}</p>
+                {warning.recommendations && (
+                  <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
+                    {warning.recommendations.map((rec, i) => (
+                      <li key={i}>{rec}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <DailyLogModal
+        isOpen={showLogModal}
+        onClose={() => setShowLogModal(false)}
+        onSave={onLogCreated}
+      />
+    </div>
+  );
+};
+
+// Analytics Component
+const Analytics = ({ logs }) => {
+  const symptomCounts = {};
+  logs.forEach(log => {
+    if (log.symptoms) {
+      log.symptoms.forEach(symptom => {
+        symptomCounts[symptom] = (symptomCounts[symptom] || 0) + 1;
+      });
+    }
+  });
+
+  const chartData = Object.entries(symptomCounts)
+    .map(([symptom, count]) => ({
+      symptom: symptom.replace('_', ' '),
+      count
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6);
+
+  const avgEnergy = logs.length > 0 ? (logs.reduce((sum, log) => sum + (log.energy_level || 0), 0) / logs.length).toFixed(1) : 0;
+  const avgSleep = logs.length > 0 ? (logs.reduce((sum, log) => sum + (log.sleep_hours || 0), 0) / logs.length).toFixed(1) : 0;
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Analytics</h2>
+        <p className="text-gray-600">Deep insights into your menstrual health</p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+          <p className="text-sm text-gray-600 mb-1">Total Logs</p>
+          <p className="text-3xl font-bold text-gray-900">{logs.length}</p>
+          <p className="text-sm text-gray-500">days tracked</p>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+          <p className="text-sm text-gray-600 mb-1">Avg Energy</p>
+          <p className="text-3xl font-bold text-gray-900">{avgEnergy}</p>
+          <p className="text-sm text-gray-500">out of 10</p>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
+          <p className="text-sm text-gray-600 mb-1">Avg Sleep</p>
+          <p className="text-3xl font-bold text-gray-900">{avgSleep}</p>
+          <p className="text-sm text-gray-500">hours/night</p>
+        </div>
+      </div>
+
+      {/* Symptom Chart */}
+      {chartData.length > 0 ? (
+        <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+          <h3 className="text-xl font-semibold text-gray-900 mb-6">Common Symptoms</h3>
+          
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+              <XAxis dataKey="symptom" angle={-45} textAnchor="end" height={80} style={{ fontSize: '12px' }} />
+              <YAxis stroke="#6B7280" style={{ fontSize: '12px' }} />
+              <Tooltip />
+              <Bar dataKey="count" fill="#F43F5E" radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-lg p-12 border border-gray-100 text-center">
+          <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500 text-lg">Log more symptoms to see patterns</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Predictions Component
+const Predictions = () => {
+  const [nextPeriod, setNextPeriod] = useState(null);
+  const [warnings, setWarnings] = useState([]);
+
+  useEffect(() => {
+    setNextPeriod(mockAPI.getPredictions());
+    setWarnings(mockAPI.getWarnings());
+  }, []);
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold text-gray-900 mb-2">Predictions</h2>
+        <p className="text-gray-600">AI-powered insights into your upcoming cycle</p>
+      </div>
+
+      {nextPeriod && (
+        <div className="bg-gradient-to-br from-pink-50 to-purple-50 rounded-2xl shadow-lg p-8 border border-pink-100">
+          <div className="flex items-center space-x-3 mb-6">
+            <Calendar className="w-8 h-8 text-pink-600" />
+            <h3 className="text-2xl font-bold text-gray-900">Next Period Prediction</h3>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            <div>
+              <p className="text-sm text-gray-600 mb-2">Predicted Start Date</p>
+              <p className="text-3xl font-bold text-gray-900">{formatDate(nextPeriod.predicted_start_date)}</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {Math.ceil((new Date(nextPeriod.predicted_start_date) - new Date()) / (1000 * 60 * 60 * 24))} days away
+              </p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-600 mb-2">Expected Cycle Length</p>
+              <p className="text-3xl font-bold text-gray-900">{nextPeriod.predicted_cycle_length} days</p>
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-600 mb-2">Confidence</p>
+              <p className="text-3xl font-bold text-gray-900">{Math.round(nextPeriod.confidence_score * 100)}%</p>
+              <div className="w-full h-3 bg-white rounded-full mt-2 overflow-hidden">
+                <div 
+                  className="h-full bg-pink-500 rounded-full"
+                  style={{ width: `${nextPeriod.confidence_score * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-lg p-6 border border-orange-200">
+          <div className="flex items-center space-x-2 mb-4">
+            <AlertCircle className="w-6 h-6 text-orange-500" />
+            <h3 className="text-xl font-semibold text-gray-900">Early Warnings</h3>
+          </div>
+
+          <div className="space-y-4">
+            {warnings.map((warning, idx) => (
+              <div key={idx} className="p-5 rounded-xl border-l-4 bg-orange-50 border-orange-500">
+                <h4 className="font-bold text-gray-900 mb-2">{warning.title}</h4>
+                <p className="text-sm text-gray-700 mb-3">{warning.description}</p>
+                {warning.recommendations && (
+                  <>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">Recommendations:</p>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      {warning.recommendations.map((rec, i) => (
+                        <li key={i} className="flex items-start">
+                          <span className="text-pink-500 mr-2">•</span>
+                          <span>{rec}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Chat Component
+const Chat = () => {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const suggestedQuestions = [
+    "What patterns do you notice in my data?",
+    "When do I usually experience headaches?",
+    "How does my sleep affect my mood?",
+    "What should I expect during my luteal phase?"
+  ];
+
+  const sendMessage = (messageText = input) => {
+    if (!messageText.trim()) return;
+
+    setMessages(prev => [...prev, { role: 'user', content: messageText }]);
+    setInput('');
+    setLoading(true);
+
+    setTimeout(() => {
+      const response = "Based on your tracking data, I can see some interesting patterns! Your energy levels tend to peak during the follicular phase and dip slightly during the luteal phase. I've also noticed that your sleep quality correlates strongly with your mood - when you sleep well, your mood improves significantly. Would you like me to dive deeper into any specific pattern?";
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
+      setLoading(false);
+    }, 1500);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 h-[calc(100vh-200px)] flex flex-col">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center space-x-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-purple-500 rounded-full flex items-center justify-center">
+              <Sparkles className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">AI Health Assistant</h2>
+              <p className="text-sm text-gray-600">Ask me anything about your cycle</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {messages.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <MessageCircle className="w-8 h-8 text-pink-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Start a conversation</h3>
+              <p className="text-gray-600 mb-6">Try asking me something:</p>
+              
+              <div className="grid md:grid-cols-2 gap-3 max-w-2xl mx-auto">
+                {suggestedQuestions.map((q, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => sendMessage(q)}
+                    className="p-4 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                  >
+                    <p className="text-sm text-gray-700">{q}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-6 py-4 ${
+                    msg.role === 'user' ? 'bg-pink-500 text-white' : 'bg-gray-100 text-gray-900'
+                  }`}>
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  </div>
+                </div>
+              ))}
+              
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 rounded-2xl px-6 py-4">
+                    <div className="flex space-x-2">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-gray-200">
+          <div className="flex space-x-3">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && !loading && sendMessage()}
+              placeholder="Ask about your cycle, symptoms, or patterns..."
+              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:outline-none"
+              disabled={loading}
+            />
+            <button
+              onClick={() => sendMessage()}
+              disabled={loading || !input.trim()}
+              className="px-6 py-3 bg-pink-500 text-white font-semibold rounded-lg hover:bg-pink-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Main App
+export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [logs, setLogs] = useState([]);
+
+  const handleLogCreated = (logData) => {
+    const newLog = mockAPI.createLog(logData);
+    setLogs(prev => [newLog, ...prev]);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Header activeTab={activeTab} setActiveTab={setActiveTab} />
+      
+      <main>
+        {activeTab === 'dashboard' && (
+          <Dashboard logs={logs} onLogCreated={handleLogCreated} />
+        )}
+        {activeTab === 'analytics' && (
+          <Analytics logs={logs} />
+        )}
+        {activeTab === 'predictions' && (
+          <Predictions />
+        )}
+        {activeTab === 'chat' && (
+          <Chat />
+        )}
+      </main>
+    </div>
+  );
+}
