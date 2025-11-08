@@ -10,8 +10,38 @@ import {
   BarChart3, Sparkles, Settings, Bell, Download, Menu
 } from 'lucide-react';
 
-// API Configuration
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// API Configuration - REAL V2 BACKEND
+const API_BASE = 'https://period-tracker-api.ben-8b4.workers.dev';
+
+// Auth token management
+const getAuthToken = () => localStorage.getItem('auth_token');
+const setAuthToken = (token) => localStorage.setItem('auth_token', token);
+const clearAuthToken = () => localStorage.removeItem('auth_token');
+
+// Authenticated fetch wrapper
+const authFetch = async (endpoint, options = {}) => {
+  const token = getAuthToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers
+  });
+
+  if (response.status === 401) {
+    clearAuthToken();
+    window.location.reload();
+  }
+
+  return response;
+};
 
 // ==================== Utility Functions ====================
 const formatDate = (date) => {
@@ -134,24 +164,46 @@ const Header = ({ activeTab, setActiveTab, user }) => {
 const DailyLogModal = ({ isOpen, onClose, onSave, userId, initialData = null }) => {
   const [logData, setLogData] = useState({
     log_date: new Date().toISOString().split('T')[0],
-    flow_level: '',
-    mood: '',
-    mood_intensity: 5,
-    energy_level: 5,
+    flow_level: null,
+    mood: 3,
+    energy: 3,
     sleep_hours: 7,
     sleep_quality: 5,
-    sleep_disruptions: 0,
     symptoms: [],
     notes: ''
   });
 
   const [loading, setLoading] = useState(false);
+  const [contextQuestions, setContextQuestions] = useState(null);
+  const [showFlowQuestion, setShowFlowQuestion] = useState(false);
 
   useEffect(() => {
     if (initialData) {
       setLogData(initialData);
     }
   }, [initialData]);
+
+  // Load context-aware questions when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadContextQuestions();
+    }
+  }, [isOpen, logData.log_date]);
+
+  const loadContextQuestions = async () => {
+    try {
+      const response = await authFetch(`/daily/questions?date=${logData.log_date}`);
+      if (response.ok) {
+        const data = await response.json();
+        setContextQuestions(data);
+        // Check if flow question is present (only during period)
+        const hasFlowQuestion = data.questions?.some(q => q.id === 'flow_level');
+        setShowFlowQuestion(hasFlowQuestion);
+      }
+    } catch (error) {
+      console.error('Failed to load context questions:', error);
+    }
+  };
 
   const flowLevels = ['none', 'spotting', 'light', 'medium', 'heavy'];
   const moods = ['happy', 'sad', 'anxious', 'irritable', 'calm', 'energetic', 'tired'];
@@ -206,87 +258,65 @@ const DailyLogModal = ({ isOpen, onClose, onSave, userId, initialData = null }) 
             />
           </div>
 
-          {/* Flow Level */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
-              Period Flow
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {flowLevels.map(level => (
-                <button
-                  key={level}
-                  type="button"
-                  onClick={() => setLogData({ ...logData, flow_level: level })}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                    logData.flow_level === level
-                      ? 'bg-pink-500 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {level}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Mood */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
-              Mood
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {moods.map(mood => (
-                <button
-                  key={mood}
-                  type="button"
-                  onClick={() => setLogData({ ...logData, mood })}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all capitalize ${
-                    logData.mood === mood
-                      ? 'bg-blue-500 text-white shadow-md'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {mood}
-                </button>
-              ))}
-            </div>
-            
-            {logData.mood && (
-              <div className="mt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-600">Intensity</span>
-                  <span className="text-lg font-bold text-gray-900">
-                    {logData.mood_intensity}/10
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  value={logData.mood_intensity}
-                  onChange={(e) => setLogData({ ...logData, mood_intensity: parseInt(e.target.value) })}
-                  className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                />
+          {/* Context-Aware Flow Question - ONLY SHOWS DURING PERIOD */}
+          {showFlowQuestion && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                Period Flow (Context-Aware - Only During Period!)
+              </label>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm text-gray-600">Flow Level</span>
+                <span className="text-lg font-bold text-gray-900">
+                  {logData.flow_level || 3}/5
+                </span>
               </div>
-            )}
+              <input
+                type="range"
+                min="1"
+                max="5"
+                value={logData.flow_level || 3}
+                onChange={(e) => setLogData({ ...logData, flow_level: parseInt(e.target.value) })}
+                className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-pink-500"
+              />
+            </div>
+          )}
+
+          {/* Mood Slider */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-semibold text-gray-700">
+                Mood
+              </label>
+              <span className="text-lg font-bold text-gray-900">
+                {logData.mood}/5
+              </span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="5"
+              value={logData.mood}
+              onChange={(e) => setLogData({ ...logData, mood: parseInt(e.target.value) })}
+              className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
           </div>
 
-          {/* Energy Level */}
+          {/* Energy Slider */}
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-sm font-semibold text-gray-700">
                 Energy Level
               </label>
               <span className="text-lg font-bold text-gray-900">
-                {logData.energy_level}/10
+                {logData.energy}/5
               </span>
             </div>
             <input
               type="range"
               min="1"
-              max="10"
-              value={logData.energy_level}
-              onChange={(e) => setLogData({ ...logData, energy_level: parseInt(e.target.value) })}
+              max="5"
+              value={logData.energy}
+              onChange={(e) => setLogData({ ...logData, energy: parseInt(e.target.value) })}
               className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-500"
             />
           </div>
@@ -406,30 +436,44 @@ const Dashboard = ({ userId, logs, cycles, onLogCreated }) => {
   const [showLogModal, setShowLogModal] = useState(false);
   const [nextPeriod, setNextPeriod] = useState(null);
   const [warnings, setWarnings] = useState([]);
+  const [streak, setStreak] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
 
   useEffect(() => {
-    loadPredictions();
+    loadDashboardData();
   }, [userId]);
 
-  const loadPredictions = async () => {
+  const loadDashboardData = async () => {
     try {
-      const response = await fetch(`${API_BASE}/users/${userId}/predictions/next-period`);
-      if (response.ok) {
-        const data = await response.json();
+      // Load dashboard data
+      const dashboardRes = await authFetch('/dashboard');
+      if (dashboardRes.ok) {
+        const data = await dashboardRes.json();
+        setDashboard(data);
+      }
+
+      // Load predictions
+      const periodRes = await authFetch('/predictions/next-period');
+      if (periodRes.ok) {
+        const data = await periodRes.json();
         setNextPeriod(data);
       }
-    } catch (error) {
-      console.error('Error loading predictions:', error);
-    }
 
-    try {
-      const response = await fetch(`${API_BASE}/users/${userId}/warnings`);
-      if (response.ok) {
-        const data = await response.json();
-        setWarnings(data.warnings || []);
+      // Load patterns (NOT medical warnings!)
+      const patternsRes = await authFetch('/patterns');
+      if (patternsRes.ok) {
+        const data = await patternsRes.json();
+        setWarnings(data || []);
+      }
+
+      // Load streak data
+      const streakRes = await authFetch('/streaks');
+      if (streakRes.ok) {
+        const data = await streakRes.json();
+        setStreak(data);
       }
     } catch (error) {
-      console.error('Error loading warnings:', error);
+      console.error('Error loading dashboard data:', error);
     }
   };
 
@@ -463,6 +507,22 @@ const Dashboard = ({ userId, logs, cycles, onLogCreated }) => {
           )}
         </p>
       </div>
+
+      {/* Streak Card - NEW V2 FEATURE */}
+      {streak && (
+        <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-2xl p-6 border border-orange-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">🔥 Logging Streak</h3>
+              <p className="text-4xl font-bold text-orange-600 mb-1">{streak.current_streak} days</p>
+              <p className="text-sm text-gray-600">
+                Longest: {streak.longest_streak} days • Total logs: {streak.total_logs}
+              </p>
+            </div>
+            <div className="text-7xl">🔥</div>
+          </div>
+        </div>
+      )}
 
       {/* Primary Cards */}
       <div className="grid md:grid-cols-2 gap-6">
@@ -653,7 +713,7 @@ const Analytics = ({ userId, logs }) => {
 
   const loadAnalytics = async () => {
     try {
-      const response = await fetch(`${API_BASE}/users/${userId}/analytics`);
+      const response = await authFetch('/analytics');
       if (response.ok) {
         const data = await response.json();
         setAnalytics(data);
@@ -815,17 +875,15 @@ const Predictions = ({ userId }) => {
 
   const loadPredictions = async () => {
     try {
-      const [periodRes, symptomsRes, warningsRes] = await Promise.all([
-        fetch(`${API_BASE}/users/${userId}/predictions/next-period`),
-        fetch(`${API_BASE}/users/${userId}/predictions/symptoms`),
-        fetch(`${API_BASE}/users/${userId}/warnings`)
+      const [periodRes, patternsRes] = await Promise.all([
+        authFetch('/predictions/next-period'),
+        authFetch('/patterns')
       ]);
 
       if (periodRes.ok) setNextPeriod(await periodRes.json());
-      if (symptomsRes.ok) setSymptoms(await symptomsRes.json());
-      if (warningsRes.ok) {
-        const data = await warningsRes.json();
-        setWarnings(data.warnings || []);
+      if (patternsRes.ok) {
+        const data = await patternsRes.json();
+        setWarnings(data || []);
       }
     } catch (error) {
       console.error('Error loading predictions:', error);
@@ -1002,12 +1060,10 @@ const Chat = ({ userId }) => {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}/users/${userId}/chat`, {
+      const response = await authFetch('/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: messageText,
-          include_context: true
+          message: messageText
         })
       });
 
@@ -1145,51 +1201,47 @@ const App = () => {
   }, []);
 
   const initializeApp = async () => {
-    // Check for existing user
-    let storedUserId = localStorage.getItem('period_tracker_user_id');
-    
-    if (!storedUserId) {
-      // Create demo user
-      try {
-        const response = await fetch(`${API_BASE}/users/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: `user${Date.now()}@example.com`,
-            average_cycle_length: 28
-          })
-        });
-        
-        if (response.ok) {
-          const userData = await response.json();
-          storedUserId = userData.user_id;
-          localStorage.setItem('period_tracker_user_id', storedUserId);
-          setUser(userData);
-        }
-      } catch (error) {
-        console.error('Error creating user:', error);
+    const token = getAuthToken();
+
+    if (!token) {
+      // No token - redirect to login
+      setLoading(false);
+      setUserId(null);
+      return;
+    }
+
+    try {
+      // Get user data
+      const response = await authFetch('/users/me');
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+        setUserId(userData.user_id);
+        await loadUserData(userData.user_id);
+      } else {
+        clearAuthToken();
+        setUserId(null);
       }
+    } catch (error) {
+      console.error('Error loading user:', error);
+      clearAuthToken();
+      setUserId(null);
     }
-    
-    if (storedUserId) {
-      setUserId(storedUserId);
-      await loadUserData(storedUserId);
-    }
-    
+
     setLoading(false);
   };
 
   const loadUserData = async (id) => {
     try {
       // Load logs
-      const logsRes = await fetch(`${API_BASE}/users/${id}/logs?limit=30`);
+      const logsRes = await authFetch('/logs?limit=30');
       if (logsRes.ok) {
         const logsData = await logsRes.json();
         setLogs(logsData);
       }
 
       // Load cycles
-      const cyclesRes = await fetch(`${API_BASE}/users/${id}/cycles?limit=12`);
+      const cyclesRes = await authFetch('/cycles?limit=12');
       if (cyclesRes.ok) {
         const cyclesData = await cyclesRes.json();
         setCycles(cyclesData);
@@ -1201,9 +1253,8 @@ const App = () => {
 
   const handleLogCreated = async (logData) => {
     try {
-      const response = await fetch(`${API_BASE}/users/${userId}/logs`, {
+      const response = await authFetch('/logs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(logData)
       });
 
@@ -1213,6 +1264,38 @@ const App = () => {
     } catch (error) {
       console.error('Error creating log:', error);
       throw error;
+    }
+  };
+
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' or 'register'
+  const [authError, setAuthError] = useState('');
+
+  const handleAuth = async (email, password, name = null) => {
+    setAuthError('');
+    try {
+      const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+      const body = authMode === 'login'
+        ? { email, password }
+        : { email, password, name };
+
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setAuthToken(data.token);
+        setShowAuthModal(false);
+        await initializeApp();
+      } else {
+        setAuthError(data.error || 'Authentication failed');
+      }
+    } catch (error) {
+      setAuthError('Network error. Please try again.');
     }
   };
 
@@ -1227,14 +1310,95 @@ const App = () => {
     );
   }
 
+  // Show login if no user
+  if (!userId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-purple-50 flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8">
+          <div className="text-center mb-8">
+            <Heart className="w-16 h-16 text-pink-500 mx-auto mb-4" />
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">FlowTracker</h1>
+            <p className="text-gray-600">AI-Powered Period Tracking</p>
+          </div>
+
+          <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => { setAuthMode('login'); setAuthError(''); }}
+              className={`flex-1 py-2 rounded-md transition-all font-medium ${
+                authMode === 'login'
+                  ? 'bg-white text-pink-600 shadow-sm'
+                  : 'text-gray-600'
+              }`}
+            >
+              Login
+            </button>
+            <button
+              onClick={() => { setAuthMode('register'); setAuthError(''); }}
+              className={`flex-1 py-2 rounded-md transition-all font-medium ${
+                authMode === 'register'
+                  ? 'bg-white text-pink-600 shadow-sm'
+                  : 'text-gray-600'
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            handleAuth(
+              formData.get('email'),
+              formData.get('password'),
+              formData.get('name')
+            );
+          }}>
+            {authMode === 'register' && (
+              <input
+                type="text"
+                name="name"
+                placeholder="Name"
+                required
+                className="w-full px-4 py-3 mb-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-500"
+              />
+            )}
+            <input
+              type="email"
+              name="email"
+              placeholder="Email"
+              required
+              className="w-full px-4 py-3 mb-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-500"
+            />
+            <input
+              type="password"
+              name="password"
+              placeholder="Password"
+              required
+              className="w-full px-4 py-3 mb-4 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-500"
+            />
+            {authError && (
+              <p className="text-red-600 text-sm mb-4">{authError}</p>
+            )}
+            <button
+              type="submit"
+              className="w-full py-3 bg-gradient-to-r from-pink-600 to-pink-700 text-white rounded-lg font-semibold hover:shadow-lg transition-all"
+            >
+              {authMode === 'login' ? 'Login' : 'Sign Up'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header activeTab={activeTab} setActiveTab={setActiveTab} user={user} />
-      
+
       <main>
         {activeTab === 'dashboard' && (
-          <Dashboard 
-            userId={userId} 
+          <Dashboard
+            userId={userId}
             logs={logs}
             cycles={cycles}
             onLogCreated={handleLogCreated}

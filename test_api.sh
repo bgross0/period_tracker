@@ -1,166 +1,125 @@
 #!/bin/bash
 
-# API Test Script for Period Tracker
+# V2 API Testing Script
 API_URL="https://period-tracker-api.ben-8b4.workers.dev"
 
-echo "🧪 Testing Period Tracker API..."
-echo "================================"
-echo ""
+echo "=========================================="
+echo "Period Tracker V2 API Test Suite"
+echo "=========================================="
 
-# Test 1: Health Check
-echo "1️⃣  Testing health endpoint..."
-curl -s "$API_URL/health" | jq '.'
-echo ""
+RANDOM_EMAIL="test_v2_$(date +%s)@example.com"
+echo -e "\n📧 Test User: $RANDOM_EMAIL"
 
-# Test 2: Register User
-echo "2️⃣  Registering new user..."
+# 1. Register User
+echo -e "\n1️⃣  Testing Registration..."
 REGISTER_RESPONSE=$(curl -s -X POST "$API_URL/auth/register" \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "testpass123",
-    "name": "Test User",
-    "date_of_birth": "1995-05-15",
-    "average_cycle_length": 28
-  }')
+  -d "{
+    \"email\": \"$RANDOM_EMAIL\",
+    \"password\": \"testpass123\",
+    \"name\": \"Test User V2\"
+  }")
 
 echo "$REGISTER_RESPONSE" | jq '.'
-
-# Extract token
 TOKEN=$(echo "$REGISTER_RESPONSE" | jq -r '.token')
 
-if [ "$TOKEN" == "null" ] || [ -z "$TOKEN" ]; then
-  echo "❌ Registration failed or user already exists. Trying login..."
-
-  # Try login instead
-  LOGIN_RESPONSE=$(curl -s -X POST "$API_URL/auth/login" \
-    -H "Content-Type: application/json" \
-    -d '{
-      "email": "test@example.com",
-      "password": "testpass123"
-    }')
-
-  echo "$LOGIN_RESPONSE" | jq '.'
-  TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.token')
+if [ "$TOKEN" != "null" ] && [ ! -z "$TOKEN" ]; then
+  echo "✅ Registration successful!"
+else
+  echo "❌ Registration failed!"
+  exit 1
 fi
 
-echo "🔑 Token: $TOKEN"
-echo ""
-
-# Test 3: Get User Info
-echo "3️⃣  Getting user info..."
-curl -s "$API_URL/users/me" \
-  -H "Authorization: Bearer $TOKEN" | jq '.'
-echo ""
-
-# Test 4: Start a Cycle
-echo "4️⃣  Starting a new cycle..."
-curl -s -X POST "$API_URL/cycles" \
-  -H "Authorization: Bearer $TOKEN" \
+# 2. Complete Onboarding
+echo -e "\n2️⃣  Testing Onboarding..."
+ONBOARDING_RESPONSE=$(curl -s -X POST "$API_URL/onboarding" \
   -H "Content-Type: application/json" \
-  -d '{
-    "start_date": "2025-01-01"
-  }' | jq '.'
-echo ""
-
-# Test 5: Create Daily Logs
-echo "5️⃣  Creating daily logs..."
-for day in {1..5}; do
-  DATE="2025-01-0${day}"
-  echo "Creating log for $DATE..."
-  curl -s -X POST "$API_URL/logs" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"log_date\": \"$DATE\",
-      \"cycle_phase\": \"menstrual\",
-      \"flow_level\": 3,
-      \"mood\": \"tired\",
-      \"mood_intensity\": 2,
-      \"energy_level\": 3,
-      \"sleep_hours\": 7.5,
-      \"sleep_quality\": 4,
-      \"symptoms\": [\"cramps\", \"bloating\"],
-      \"symptom_severity\": {\"cramps\": 3, \"bloating\": 2},
-      \"notes\": \"Feeling okay, some cramping\"
-    }" | jq -c '{log_id, log_date, mood, energy_level}'
-done
-echo ""
-
-# Test 6: Get Logs
-echo "6️⃣  Retrieving logs..."
-curl -s "$API_URL/logs?limit=10" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[0:3]'
-echo ""
-
-# Test 7: Get Cycles
-echo "7️⃣  Getting cycles..."
-curl -s "$API_URL/cycles" \
-  -H "Authorization: Bearer $TOKEN" | jq '.'
-echo ""
-
-# Test 8: Start another cycle for predictions
-echo "8️⃣  Creating second cycle for predictions..."
-curl -s -X POST "$API_URL/cycles" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
   -d '{
-    "start_date": "2025-01-29"
-  }' | jq '.'
-echo ""
+    "last_period_start": "2025-11-01",
+    "average_cycle_length": 28,
+    "average_period_length": 5,
+    "regularity": "regular",
+    "track_mood": true,
+    "track_energy": true,
+    "track_sleep": true,
+    "track_symptoms": true,
+    "track_flow": true,
+    "track_remedies": true
+  }')
 
-# Add logs for second cycle
-for day in {29..31}; do
-  DATE="2025-01-${day}"
-  echo "Creating log for $DATE..."
-  curl -s -X POST "$API_URL/logs" \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"log_date\": \"$DATE\",
-      \"cycle_phase\": \"menstrual\",
-      \"flow_level\": 2,
-      \"mood\": \"good\",
-      \"mood_intensity\": 4,
-      \"energy_level\": 4,
-      \"sleep_hours\": 8,
-      \"sleep_quality\": 5,
-      \"symptoms\": [\"mild_cramps\"],
-      \"symptom_severity\": {\"mild_cramps\": 1},
-      \"notes\": \"Feeling better\"
-    }" | jq -c '{log_id, log_date, mood}'
-done
-echo ""
+echo "$ONBOARDING_RESPONSE" | jq '.'
 
-# Test 9: Get Analytics
-echo "9️⃣  Getting analytics..."
-curl -s "$API_URL/analytics" \
+# 3. Get Context-Aware Daily Questions
+echo -e "\n3️⃣  Testing Context-Aware Questions..."
+echo "Day 1 (Menstrual - should ask about flow):"
+QUESTIONS=$(curl -s -X GET "$API_URL/daily/questions?date=2025-11-01" \
+  -H "Authorization: Bearer $TOKEN")
+echo "$QUESTIONS" | jq '.questions[] | {id, label}'
+
+echo -e "\nDay 15 (Ovulation - should NOT ask about flow):"
+QUESTIONS15=$(curl -s -X GET "$API_URL/daily/questions?date=2025-11-15" \
+  -H "Authorization: Bearer $TOKEN")
+echo "$QUESTIONS15" | jq '.questions[] | {id, label}'
+
+# 4. Log Daily Entry
+echo -e "\n4️⃣  Testing Daily Log..."
+LOG_RESPONSE=$(curl -s -X POST "$API_URL/logs" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "log_date": "2025-11-01",
+    "mood": 3,
+    "energy": 2,
+    "flow_level": 4,
+    "symptoms": ["cramps", "bloating"],
+    "sleep_quality": 4,
+    "sleep_hours": 7.5
+  }')
+
+echo "$LOG_RESPONSE" | jq '.'
+LOG_ID=$(echo "$LOG_RESPONSE" | jq -r '.log_id')
+
+# 5. Test Remedy Suggestions
+echo -e "\n5️⃣  Testing Remedy Suggestions..."
+REMEDIES=$(curl -s -X GET "$API_URL/remedies/suggestions?symptom=cramps" \
+  -H "Authorization: Bearer $TOKEN")
+echo "Top 3 remedies for cramps:"
+echo "$REMEDIES" | jq '.available_remedies[0:3] | .[] | {name, description}'
+
+# 6. Track Remedy Effectiveness
+echo -e "\n6️⃣  Testing Remedy Tracking..."
+curl -s -X POST "$API_URL/remedies/track" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "{
+    \"remedy_id\": \"rem_heating_pad\",
+    \"symptom\": \"cramps\",
+    \"log_id\": \"$LOG_ID\",
+    \"effectiveness\": 5
+  }" | jq '.'
+
+# 7. Check Streaks
+echo -e "\n7️⃣  Testing Streaks..."
+curl -s -X GET "$API_URL/streaks" \
   -H "Authorization: Bearer $TOKEN" | jq '.'
-echo ""
 
-# Test 10: Predict Next Period
-echo "🔟 Predicting next period..."
-curl -s "$API_URL/predictions/next-period" \
-  -H "Authorization: Bearer $TOKEN" | jq '.'
-echo ""
+# 8. Dashboard
+echo -e "\n8️⃣  Testing Dashboard..."
+curl -s -X GET "$API_URL/dashboard" \
+  -H "Authorization: Bearer $TOKEN" | jq '{cycle_day, phase, next_period, streak, total_logs}'
 
-# Test 11: Get Early Warnings
-echo "1️⃣1️⃣  Getting early warnings..."
-curl -s "$API_URL/warnings" \
-  -H "Authorization: Bearer $TOKEN" | jq '.'
-echo ""
+# 9. Test Chat
+echo -e "\n9️⃣  Testing RAG Chat (No Diagnoses)..."
+CHAT=$(curl -s -X POST "$API_URL/chat" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "message": "I have cramps, what should I try?"
+  }')
+echo "$CHAT" | jq -r '.response' | head -c 300
+echo "..."
 
-# Test 12: Get Insights
-echo "1️⃣2️⃣  Getting insights..."
-curl -s "$API_URL/insights" \
-  -H "Authorization: Bearer $TOKEN" | jq '.'
-echo ""
-
-echo "✅ All tests completed!"
-echo ""
-echo "📝 Note: Chat endpoint requires GROQ_API_KEY to be set in Cloudflare"
-echo "   Test it manually with:"
-echo "   curl -X POST $API_URL/chat \\"
-echo "     -H 'Authorization: Bearer $TOKEN' \\"
-echo "     -H 'Content-Type: application/json' \\"
-echo "     -d '{\"message\": \"How am I feeling this cycle?\"}'"
+echo -e "\n=========================================="
+echo "✅ V2 Test Complete!"
+echo "=========================================="
